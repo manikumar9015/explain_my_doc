@@ -1,0 +1,34 @@
+# --- Python/Backend ---
+
+# Virtual Environment
+venv/
+
+# Secret Environment Variables
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Vector Database (should be generated on run)
+chroma_db/
+
+
+# --- Node/Frontend ---
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+
+# --- Editor/OS specific ---
+.vscode/
+.idea/
+.DS_Store
