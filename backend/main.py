@@ -1,3 +1,5 @@
+# backend/main.py
+
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,25 +15,32 @@ from fastapi import BackgroundTasks
 from .parsers import pdf_parser, docx_parser, txt_parser
 from .core.chunker import chunk_text
 from .core.embedder import embedder_instance
-from .vector_store.chroma import vector_store_instance
+from .core.vector_store.chroma import vector_store_instance
 from .core.llm import llm_instance
 from .core.scheduler import scheduler, session_manager
 
 app = FastAPI(
     title="DocuMentor AI API",
     description="API with summarization, export, and agentic features.",
-    version="4.0.0-export",
+    version="4.1.0-stable",
 )
 
-origins = ["http://localhost:5173", "http://localhost:3000", "https://explain-my-doc.vercel.app"]
+# --- CORRECTED CORS POLICY FOR VERCEL PREVIEWS ---
+allow_origin_regex = r"https://.*\.vercel\.app"
+origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=allow_origin_regex, # Use the regex for Vercel
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["X-Source-Chunks"],
 )
+# --- END OF CORS FIX ---
 
 @app.on_event("startup")
 async def startup_event():
@@ -72,50 +81,33 @@ async def process_document(file: UploadFile = File(...)):
     filename = file.filename
     extracted_text = ""
     
-    # ... (the file parsing logic is the same)
     if content_type == 'application/pdf': extracted_text = pdf_parser.parse_pdf(file)
-    # ... (etc. for docx, txt)
+    elif content_type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' or filename.endswith('.docx'): extracted_text = docx_parser.parse_docx(file)
+    elif content_type == 'text/plain' or filename.endswith('.txt'): extracted_text = txt_parser.parse_txt(file)
     else: vector_store_instance.delete_collection(session_id); raise HTTPException(status_code=400, detail=f"Unsupported file type.")
     
     if "Error:" in extracted_text: vector_store_instance.delete_collection(session_id); raise HTTPException(status_code=500, detail=extracted_text)
     if not extracted_text.strip(): vector_store_instance.delete_collection(session_id); raise HTTPException(status_code=400, detail="Document is empty.")
 
     text_chunks = chunk_text(extracted_text)
-    
-    # --- NEW BATCH PROCESSING LOGIC ---
-    batch_size = 100 # Process 100 chunks at a time
+    batch_size = 100
     total_chunks = len(text_chunks)
-    
     print(f"Starting to process {total_chunks} chunks in batches of {batch_size}...")
-
     for i in range(0, total_chunks, batch_size):
         batch_chunks = text_chunks[i:i + batch_size]
-        
         try:
-            # Generate embeddings for the current small batch
             chunk_embeddings = await embedder_instance.embed_documents(batch_chunks)
-            
-            # Prepare metadata for the current batch
             metadatas = [{"source": filename} for _ in batch_chunks]
-            
-            # Add the current batch to the vector store
             vector_store_instance.add_documents(
-                collection_name=session_id, 
-                chunks=batch_chunks, 
-                embeddings=chunk_embeddings, 
-                metadatas=metadatas
+                collection_name=session_id, chunks=batch_chunks, embeddings=chunk_embeddings, metadatas=metadatas
             )
             print(f"Processed batch {i // batch_size + 1}/{(total_chunks + batch_size - 1) // batch_size}")
-
         except Exception as e:
-            # Clean up if any batch fails
             vector_store_instance.delete_collection(session_id)
             raise HTTPException(status_code=500, detail=f"Failed to process batch {i}: {e}")
-    # --- END OF NEW LOGIC ---
 
     return JSONResponse(
-        status_code=200, 
-        content={"message": "Document processed successfully in batches.", "session_id": session_id}
+        status_code=200, content={"message": "Document processed successfully in batches.", "session_id": session_id}
     )
 
 @app.post("/query/", tags=["Question Answering"])
@@ -144,57 +136,34 @@ async def query_document(request: QueryRequest):
             chat_history=chat_history
         )
         return StreamingResponse(answer_generator, media_type="text/plain", headers=custom_headers)
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating final answer with LLM: {e}")
 
 @app.post("/export/pdf", tags=["Exporting"])
 async def export_conversation_to_pdf(request: ExportRequest, background_tasks: BackgroundTasks):
-    """
-    Generates a summary PDF and returns it for download.
-    This version avoids tempfile and uses background tasks for cleanup.
-    """
     chat_history = [msg.dict() for msg in request.chat_history]
     if not chat_history or len(chat_history) <= 1:
         raise HTTPException(status_code=400, detail="Cannot export an empty conversation.")
-
-    # Step 1: Generate the summary (no change here)
     try:
         markdown_content = await llm_instance.summarize_conversation(chat_history)
         if "Error:" in markdown_content:
             raise HTTPException(status_code=500, detail=markdown_content)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate summary: {e}")
-
-    # --- NEW ROBUST PDF GENERATION LOGIC ---
     
-    # Define a reports directory and ensure it exists
     reports_dir = "generated_reports"
     os.makedirs(reports_dir, exist_ok=True)
-    
-    # Create a unique filename for the PDF
     pdf_filename = f"{uuid.uuid4()}.pdf"
     pdf_filepath = os.path.join(reports_dir, pdf_filename)
 
     try:
-        # Step 2: Convert Markdown to PDF in our new directory
-        print(f"Attempting to save PDF to: {pdf_filepath}")
         pdf = MarkdownPdf(toc_level=2)
         pdf.add_section(Section(markdown_content, toc=True))
         pdf.save(pdf_filepath)
-        print("PDF saved successfully.")
-
-        # Step 3: Add a background task to delete the file after sending it
-        # This prevents cluttering our server with old reports.
         background_tasks.add_task(os.remove, pdf_filepath)
-
-        # Step 4: Return the generated file for download
         return FileResponse(
-            path=pdf_filepath, 
-            filename="DocuMentor_Summary.pdf", 
-            media_type='application/pdf'
+            path=pdf_filepath, filename="DocuMentor_Summary.pdf", media_type='application/pdf'
         )
     except Exception as e:
-        # This will now give us a more specific error in the terminal
         print(f"!!! PDF GENERATION FAILED !!!: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to convert Markdown to PDF: {str(e)}")
