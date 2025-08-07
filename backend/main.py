@@ -11,6 +11,7 @@ from .core.embedder import embedder_instance
 from .vector_store.chroma import vector_store_instance
 from .core.llm import llm_instance
 from .core.scheduler import scheduler, session_manager
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -125,41 +126,30 @@ async def process_document(file: UploadFile = File(...)):
 @app.post("/query/", tags=["Question Answering"])
 async def query_document(request: QueryRequest):
     """
-    Answers a question based on the document in the specified session.
+    Accepts a user's question, finds context, and STREAMS back the answer.
     """
     session_id = request.session_id
     question = request.question
 
-    # Step 1: Embed the question
+    # Steps 1 and 2 (embedding and querying) are the same
     try:
         query_embedding = await embedder_instance.embed_documents([question])
-        if not query_embedding:
-            raise HTTPException(status_code=500, detail="Failed to embed query.")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error embedding query: {e}")
-
-    # Step 2: Query the specific session's collection
-    try:
         context_chunks = vector_store_instance.query(
             collection_name=session_id,
             query_embedding=query_embedding[0]
         )
     except Exception as e:
-        # This can happen if the session_id is invalid or has expired and been deleted.
-        raise HTTPException(status_code=404, detail=f"Session not found or an error occurred: {e}")
+        raise HTTPException(status_code=404, detail=f"Session not found or query error: {e}")
 
-    # Step 3: Generate the answer
-    final_answer = await llm_instance.generate_answer(
-        question=question,
-        context_chunks=context_chunks
-    )
-
-    return JSONResponse(
-        status_code=200,
-        content={
-            "question": question,
-            "answer": final_answer,
-            "session_id": session_id,
-            "source_chunks": context_chunks
-        }
-    )
+    # Step 3: Generate the answer using the new streaming function
+    try:
+        # This returns an async generator, not a final string
+        answer_generator = llm_instance.generate_answer_stream(
+            question=question,
+            context_chunks=context_chunks
+        )
+        # Use FastAPI's StreamingResponse to send the data chunk-by-chunk
+        return StreamingResponse(answer_generator, media_type="text/plain")
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating final answer with LLM: {e}")
