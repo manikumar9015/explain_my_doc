@@ -7,7 +7,6 @@ import { FaUserCircle, FaPaperPlane, FaRobot, FaBook } from 'react-icons/fa';
 import CodeBlock from './CodeBlock';
 import Modal from 'react-modal';
 
-// Set the root app element for accessibility
 Modal.setAppElement('#root');
 
 function ChatBox({ sessionId }) {
@@ -16,16 +15,13 @@ function ChatBox({ sessionId }) {
   ]);
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  
   const [modalIsOpen, setModalIsOpen] = useState(false);
   const [currentSources, setCurrentSources] = useState([]);
-
   const chatEndRef = useRef(null);
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
-
   useEffect(scrollToBottom, [messages, isLoading]);
 
   const openSourcesModal = (sources) => {
@@ -39,6 +35,11 @@ function ChatBox({ sessionId }) {
     const userMessage = { id: Date.now(), text: userInput, sender: 'user', sources: [] };
     const aiPlaceholder = { id: Date.now() + 1, text: '', sender: 'ai', sources: [] };
     
+    const historyForAPI = messages.slice(-4).map(msg => ({
+      sender: msg.sender,
+      text: msg.text
+    }));
+
     setMessages(prev => [...prev, userMessage, aiPlaceholder]);
     setUserInput('');
     setIsLoading(true);
@@ -47,7 +48,11 @@ function ChatBox({ sessionId }) {
       const response = await fetch('http://127.0.0.1:8000/query/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, question: userInput }),
+        body: JSON.stringify({
+          session_id: sessionId,
+          question: userInput,
+          chat_history: historyForAPI,
+        }),
       });
 
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -57,14 +62,13 @@ function ChatBox({ sessionId }) {
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-
       let finalAnswer = '';
+      
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
         finalAnswer += chunk;
-
         setMessages(prev => prev.map(msg => 
           msg.id === aiPlaceholder.id ? { ...msg, text: finalAnswer } : msg
         ));
@@ -75,7 +79,7 @@ function ChatBox({ sessionId }) {
       ));
 
     } catch (error) {
-      console.error("Streaming or sources fetch failed:", error);
+      console.error("Streaming/history request failed:", error);
       setMessages(prev => prev.map(msg => 
         msg.id === aiPlaceholder.id ? { ...msg, text: 'Sorry, I encountered an error. Please try again.', isError: true } : msg
       ));
@@ -102,6 +106,7 @@ function ChatBox({ sessionId }) {
                 <div className={`${msg.isError ? 'text-red-400' : 'text-gray-100'}`}>
                   <ReactMarkdown components={CodeBlock}>{msg.text}</ReactMarkdown>
                 </div>
+                {/* THIS IS THE CORRECTED LINE */}
                 {msg.sender === 'ai' && msg.sources && msg.sources.length > 0 && !isLoading && (
                   <button onClick={() => openSourcesModal(msg.sources)} className="mt-2 flex items-center gap-2 text-xs text-slate-400 hover:text-sky-400 transition-colors">
                     <FaBook />
