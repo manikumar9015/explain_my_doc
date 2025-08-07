@@ -1,19 +1,22 @@
 // src/components/UploadBox.jsx
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import axios from 'axios';
+import { FiFile, FiUploadCloud, FiLoader, FiCheckCircle, FiAlertTriangle } from 'react-icons/fi';
 
-// This component will receive a function from its parent (App.jsx)
-// to notify it when the upload is successful.
 function UploadBox({ onUploadSuccess }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [status, setStatus] = useState('idle'); // 'idle', 'uploading', 'success', 'error'
   const [errorMessage, setErrorMessage] = useState('');
+  const fileInputRef = useRef(null);
 
   const handleFileChange = (event) => {
     setStatus('idle');
     setErrorMessage('');
-    setSelectedFile(event.target.files[0]);
+    const file = event.target.files[0];
+    if (file) {
+      setSelectedFile(file);
+    }
   };
 
   const handleUpload = async () => {
@@ -21,69 +24,80 @@ function UploadBox({ onUploadSuccess }) {
       setErrorMessage('Please select a file first.');
       return;
     }
-
-    // Create a FormData object to send the file
     const formData = new FormData();
     formData.append('file', selectedFile);
-
     setStatus('uploading');
     setErrorMessage('');
-
     try {
-      // Make the API call to our backend
       const response = await axios.post('http://127.0.0.1:8000/process/', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
-
       setStatus('success');
-      // Call the parent's function with the new session_id
       onUploadSuccess(response.data.session_id);
-
     } catch (error) {
       setStatus('error');
-      if (error.response) {
-        // The request was made and the server responded with a status code
-        // that falls out of the range of 2xx
-        setErrorMessage(error.response.data.detail || 'An error occurred during upload.');
-      } else {
-        // Something happened in setting up the request that triggered an Error
-        setErrorMessage('Network error or server is not reachable.');
-      }
+      setErrorMessage(error.response?.data?.detail || 'An error occurred during upload.');
     }
   };
 
+  const onAreaClick = () => {
+    fileInputRef.current.click();
+  };
+
   return (
-    <div className="border-2 border-dashed border-slate-600 rounded-lg p-8 text-center">
-      <input 
-        type="file" 
-        onChange={handleFileChange} 
-        className="block w-full text-sm text-slate-400
-                   file:mr-4 file:py-2 file:px-4
-                   file:rounded-full file:border-0
-                   file:text-sm file:font-semibold
-                   file:bg-sky-50 file:text-sky-700
-                   hover:file:bg-sky-100 mb-4"
-        accept=".pdf,.docx,.txt" // Restrict file types
-      />
-      
+    <div className="flex flex-col items-center justify-center space-y-6">
+      {/* Interactive Drop Zone */}
+      <div
+        onClick={onAreaClick}
+        className="w-full h-48 border-2 border-dashed border-gray-600 rounded-xl flex flex-col items-center justify-center 
+                   text-gray-400 hover:border-purple-500 hover:text-purple-400 transition-all duration-300 cursor-pointer"
+      >
+        <FiUploadCloud className="text-4xl mb-2" />
+        <p className="text-lg font-semibold">Click to browse or drag & drop</p>
+        <p className="text-sm">Supports PDF, DOCX, TXT</p>
+        <input
+          ref={fileInputRef}
+          type="file"
+          onChange={handleFileChange}
+          className="hidden"
+          accept=".pdf,.docx,.txt"
+        />
+      </div>
+
+      {/* File Selection Info - CORRECTED BACKGROUND */}
       {selectedFile && (
-        <p className="text-slate-400 mb-4">
-          Selected: {selectedFile.name}
-        </p>
+        <div className="flex items-center gap-3 bg-black border border-gray-700 p-2 rounded-lg w-full max-w-sm">
+          <FiFile className="text-sky-400 text-xl" />
+          <span className="text-gray-300 truncate">{selectedFile.name}</span>
+        </div>
       )}
 
+      {/* Upload Button */}
       <button
         onClick={handleUpload}
         disabled={!selectedFile || status === 'uploading'}
-        className="bg-sky-600 hover:bg-sky-700 disabled:bg-slate-500 text-white font-bold py-2 px-6 rounded-lg transition-colors"
+        className="w-full max-w-sm flex items-center justify-center gap-3 font-bold py-3 px-6 rounded-lg text-white 
+                   bg-gradient-to-r from-fuchsia-600 to-indigo-600 
+                   hover:from-fuchsia-700 hover:to-indigo-700
+                   disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed
+                   transition-all duration-300 transform hover:scale-105"
       >
-        {status === 'uploading' ? 'Processing...' : 'Upload & Process'}
+        {status === 'uploading' && <FiLoader className="animate-spin" />}
+        <span>{status === 'uploading' ? 'Processing Document...' : 'Analyze Document'}</span>
       </button>
 
+      {/* Status Messages */}
       {status === 'error' && (
-        <p className="text-red-400 mt-4">{errorMessage}</p>
+        <div className="flex items-center gap-2 text-red-400">
+          <FiAlertTriangle />
+          <span>{errorMessage}</span>
+        </div>
+      )}
+      {status === 'success' && (
+         <div className="flex items-center gap-2 text-green-400">
+           <FiCheckCircle />
+           <span>Upload successful! Starting chat...</span>
+         </div>
       )}
     </div>
   );

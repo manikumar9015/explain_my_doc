@@ -3,9 +3,10 @@
 import React, { useState } from 'react';
 import UploadBox from './components/UploadBox';
 import ChatBox from './components/ChatBox';
+import { FiUpload } from 'react-icons/fi';
 
 function App() {
-  const [appState, setAppState] = useState('upload'); // 'upload' or 'chat'
+  const [appState, setAppState] = useState('upload');
   const [sessionId, setSessionId] = useState(null);
 
   const handleUploadSuccess = (newSessionId) => {
@@ -19,37 +20,36 @@ function App() {
   };
 
   return (
-    // This is the main container for the entire page
-    <div className="bg-[#343541] h-screen flex flex-col text-white font-sans">
+    <div className="bg-black h-screen flex flex-col text-gray-100 font-sans">
       
-      {/* Top Header with your new gradient styles */}
-      <header className="w-full p-4 flex justify-between items-center border-b border-gray-600 shadow-md">
-        <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 via-pink-500 to-indigo-500 bg-clip-text text-transparent">
-          ExplainMyDoc.ai
+      <header className="w-full p-4 flex justify-between items-center border-b border-gray-800 bg-gray-900/50 backdrop-blur-sm">
+        <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-fuchsia-500 via-purple-500 to-indigo-600 bg-clip-text text-transparent">
+          DocuMentor AI
         </h1>
         {appState === 'chat' && (
             <button 
               onClick={handleNewUpload} 
-              className="bg-gradient-to-r from-sky-500 to-blue-700 hover:from-sky-600 hover:to-blue-800 text-white font-semibold py-2 px-4 rounded-md text-sm transition-all duration-300"
+              title="Upload New File"
+              className="bg-black h-10 w-10 flex items-center justify-center border-2 border-white rounded-full 
+                         hover:bg-white hover:text-black transition-all duration-300 group"
             >
-              Upload New File
+              <FiUpload className="text-white text-lg group-hover:text-black transition-colors" />
             </button>
         )}
       </header>
 
-      {/* Main Content Area with the layout fix applied */}
       <main className="flex-grow w-full overflow-hidden">
         {appState === 'upload' && (
-          // Centering wrapper for the upload view
           <div className="h-full flex items-center justify-center p-4">
-            <div className="bg-[#444654] p-8 rounded-lg shadow-xl max-w-lg w-full">
+            {/* --- THIS IS THE CORRECTED DIV WITH RESPONSIVE SIZING --- */}
+            {/* It's max-w-lg by default, but becomes max-w-2xl on large screens */}
+            <div className="bg-black border border-gray-700 p-6 md:p-8 rounded-xl shadow-2xl shadow-purple-500/5 w-full max-w-lg lg:max-w-2xl">
               <UploadBox onUploadSuccess={handleUploadSuccess} />
             </div>
           </div>
         )}
 
         {appState === 'chat' && sessionId && (
-          // ChatBox now correctly fills the main area
           <ChatBox sessionId={sessionId} />
         )}
       </main>

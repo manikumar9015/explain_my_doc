@@ -1,5 +1,3 @@
-# backend/core/llm.py
-
 import google.generativeai as genai
 from typing import AsyncGenerator, List, Dict
 
@@ -41,9 +39,7 @@ class GeminiLLM:
         DRAFT ANSWER:
         """
         print("Generating draft answer...")
-        # We need the full draft, so we don't stream this part.
         response = await self.model.generate_content_async(draft_prompt)
-        print("Draft answer generated.")
         return response.text
 
     async def generate_answer_stream(
@@ -62,10 +58,8 @@ class GeminiLLM:
         context_str = "\n---\n".join(context_chunks)
         history_str = self._format_chat_history(chat_history)
 
-        # --- STEP 1: Generate the initial draft ---
         draft_answer = await self._generate_draft_answer(question, context_str, history_str)
 
-        # --- STEP 2: Critique and refine the draft ---
         critique_prompt = f"""
         You are a meticulous fact-checker and editor. Your task is to refine a "DRAFT ANSWER" about a document.
         Review the "DRAFT ANSWER" against the "ORIGINAL DOCUMENT CONTEXT". You MUST follow these rules:
@@ -94,7 +88,6 @@ class GeminiLLM:
         
         print("Generating refined answer with critique...")
         try:
-            # This is the final output that we stream to the user
             response_stream = await self.model.generate_content_async(critique_prompt, stream=True)
             async for chunk in response_stream:
                 if chunk.text:
@@ -102,5 +95,42 @@ class GeminiLLM:
         except Exception as e:
             print(f"Error during refined stream generation: {e}")
             yield f"An error occurred while generating the refined answer: {e}"
+            
+    async def summarize_conversation(self, chat_history: List[Dict[str, str]]) -> str:
+        """
+        Takes a full conversation history and synthesizes it into a structured document.
+        """
+        print("Invoking Summarizer Agent...")
+        
+        full_conversation_str = self._format_chat_history(chat_history)
+        
+        summarizer_prompt = f"""
+        You are a professional editor and report generator named "DocuMentor AI".
+        Your task is to transform a raw conversation log between a User and an AI Assistant into a clean, structured, and easy-to-read document.
+
+        **Instructions:**
+        1.  Read the entire "CONVERSATION LOG" to understand the key topics discussed.
+        2.  Do NOT just copy the conversation. Synthesize the information.
+        3.  Create a title for the document based on the content.
+        4.  Use Markdown for formatting: use headings (`#`, `##`), subheadings, bullet points (`*`), and bold text (`**`) to structure the information logically.
+        5.  Group related questions and answers into coherent sections.
+        6.  Summarize the key findings and answers. Ignore conversational pleasantries like "hello" or "thank you".
+        7.  The final output should be a professional-looking document, ready to be saved as a PDF.
+
+        ---
+        CONVERSATION LOG:
+        {full_conversation_str}
+        ---
+
+        STRUCTURED DOCUMENT (IN MARKDOWN):
+        """
+        
+        try:
+            response = await self.model.generate_content_async(summarizer_prompt)
+            print("Structured summary generated successfully.")
+            return response.text
+        except Exception as e:
+            print(f"Error during summary generation: {e}")
+            return f"Error: Could not generate the document summary. Reason: {e}"
 
 llm_instance = GeminiLLM()
