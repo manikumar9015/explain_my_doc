@@ -1,4 +1,4 @@
-// src/components/UploadBox.jsx
+// frontend/src/components/UploadBox.jsx
 
 import React, { useState, useRef } from 'react';
 import axios from 'axios';
@@ -29,9 +29,13 @@ function UploadBox({ onUploadSuccess }) {
     setStatus('uploading');
     setErrorMessage('');
     try {
-      const response = await axios.post('http://127.0.0.1:8000/process/', formData, {
+      // --- THIS IS THE CORRECTED LINE ---
+      // It now uses the environment variable and has the correct commas.
+      const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/process/`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
+      // --- END OF CORRECTION ---
+
       setStatus('success');
       onUploadSuccess(response.data.session_id);
     } catch (error) {
@@ -46,7 +50,6 @@ function UploadBox({ onUploadSuccess }) {
 
   return (
     <div className="flex flex-col items-center justify-center space-y-6">
-      {/* Interactive Drop Zone */}
       <div
         onClick={onAreaClick}
         className="w-full h-48 border-2 border-dashed border-gray-600 rounded-xl flex flex-col items-center justify-center 
@@ -64,7 +67,6 @@ function UploadBox({ onUploadSuccess }) {
         />
       </div>
 
-      {/* File Selection Info - CORRECTED BACKGROUND */}
       {selectedFile && (
         <div className="flex items-center gap-3 bg-black border border-gray-700 p-2 rounded-lg w-full max-w-sm">
           <FiFile className="text-sky-400 text-xl" />
@@ -72,7 +74,6 @@ function UploadBox({ onUploadSuccess }) {
         </div>
       )}
 
-      {/* Upload Button */}
       <button
         onClick={handleUpload}
         disabled={!selectedFile || status === 'uploading'}
@@ -86,7 +87,6 @@ function UploadBox({ onUploadSuccess }) {
         <span>{status === 'uploading' ? 'Processing Document...' : 'Analyze Document'}</span>
       </button>
 
-      {/* Status Messages */}
       {status === 'error' && (
         <div className="flex items-center gap-2 text-red-400">
           <FiAlertTriangle />

@@ -38,7 +38,7 @@ function ChatBox({ sessionId }) {
     setSuggestions([]);
     setIsLoading(true);
     try {
-      const response = await fetch('http://127.0.0.1:8000/query/', {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/query/`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId, question: messageText, chat_history: historyForAPI }),
       });
@@ -78,7 +78,7 @@ function ChatBox({ sessionId }) {
       const historyForExport = messages.map(msg => ({
         sender: msg.sender, text: msg.text,
       }));
-      const response = await axios.post('http://127.0.0.1:8000/export/pdf', {
+      const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/export/pdf`, {
           chat_history: historyForExport
       }, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data]));
